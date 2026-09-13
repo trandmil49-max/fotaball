@@ -13,6 +13,7 @@ Mantık:
 """
 
 import os
+import logging
 from PIL import Image, ImageDraw, ImageFont
 from moviepy import ImageClip, concatenate_videoclips
 
@@ -24,12 +25,31 @@ from config import (
     TEMP_DIR,
 )
 
+logger = logging.getLogger(__name__)
+
 LOGO_SIZE = 220
 BOX_TOP = 90
 
+_font_warning_shown = False
+
 
 def _load_font(size: int):
-    return ImageFont.truetype(FONT_PATH, size)
+    """Font dosyasını yükler. Bir sebeple bulunamazsa (örnek: GitHub'a
+    yüklerken fonts klasörü eksik kalmışsa) bot çökmesin diye
+    Pillow'un kendi standart fontuna geri döner ve bunu net şekilde loglar."""
+    global _font_warning_shown
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except Exception:
+        if not _font_warning_shown:
+            logger.error(
+                "UYARI: Font dosyası bulunamadı (%s). GitHub reposunda "
+                "'fonts/BebasNeue-Regular.ttf' dosyasının gerçekten var "
+                "olduğunu kontrol et. Şimdilik yedek/standart font kullanılıyor.",
+                FONT_PATH,
+            )
+            _font_warning_shown = True
+        return ImageFont.load_default(size=size)
 
 
 def _make_frame_image(logo1: Image.Image, logo2: Image.Image, score, stage_label):
