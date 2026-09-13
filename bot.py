@@ -75,10 +75,10 @@ async def receive_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Video indirildi.\n\nAdım 2/3: Birinci takımın logosunu gönder (fotoğraf olarak)."
         )
         return WAITING_LOGO1
-    except Exception:
+    except Exception as e:
         logger.exception("Linkten video indirilemedi")
         await update.message.reply_text(
-            "Bu linkten videoyu indiremedim (video özel olabilir ya da site desteklenmiyor olabilir).\n\n"
+            f"Bu linkten videoyu indiremedim. Gerçek hata: {e}\n\n"
             "Bunun yerine videoyu doğrudan buraya yükler misin? "
             "(Not: Telegram kuralı gereği bot, 20 MB'dan büyük dosyaları indiremiyor, "
             "o yüzden video küçükse bu yöntem işe yarar.)"
@@ -96,11 +96,13 @@ async def receive_video_fallback(update: Update, context: ContextTypes.DEFAULT_T
     try:
         file = await context.bot.get_file(video.file_id)
         await file.download_to_drive(video_path)
-    except Exception:
+    except Exception as e:
         logger.exception("Telegram'dan video indirilemedi")
         await update.message.reply_text(
-            "Bu video da indirilemedi - muhtemelen 20 MB sınırını aşıyor. "
-            "Videoyu biraz sıkıştırıp (küçültüp) tekrar gönderebilir misin?"
+            f"Bu video indirilemedi. Gerçek hata: {e}\n\n"
+            "(Not: bu, video 20 MB'ı geçtiği için de olabilir, başka bir "
+            "sebepten de olabilir - yukarıdaki hata mesajı gerçek sebebi gösteriyor.) "
+            "Tekrar dener misin?"
         )
         return WAITING_VIDEO_FALLBACK
 

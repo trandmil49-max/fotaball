@@ -60,6 +60,29 @@ ister; o durumda video 20 MB'dan küçük olmalı.
   sorun yaşarsan haber ver, videoyu küçük parçalara bölecek bir ek
   adım ekleyebiliriz.
 
+## Link bazen "indirilemedi" diyorsa (YouTube'un kendi engeli)
+
+YouTube, sunucu/veri merkezi adreslerinden (Railway de bu kategoride)
+gelen indirme isteklerini bazen "bot" sanıp engelliyor. Bot bunu aşmak
+için otomatik olarak birkaç farklı yöntemi sırayla dener (telefon
+uygulamasıymış gibi görünme gibi) - çoğu zaman bu yeterli olur.
+
+Eğer bazı videolarda hâlâ "indirilemedi" derse, en kesin çözüm
+**cookies** eklemektir (YouTube'a senin hesabınla girmiş gibi görünmesini
+sağlar):
+
+1. Bilgisayarında Chrome'a "Get cookies.txt LOCALLY" adlı eklentiyi kur.
+2. youtube.com'da oturum açıkken bu eklentiyle cookies.txt dosyasını
+   indir.
+3. O dosyanın İÇERİĞİNİ (metnini) kopyala.
+4. Railway'de **Variables** kısmına yeni bir değişken ekle:
+   - İsim: `YTDLP_COOKIES`
+   - Değer: kopyaladığın metin
+5. Deploy'a bas.
+
+Bu adım **zorunlu değil** - önce cookies olmadan dene, çoğu video zaten
+çalışacaktır. Sadece belirli videolar inatla indirilemezse bu son çare.
+
 ## Şu an bu bot ne yapmıyor (ileride eklenebilir)
 
 - Videodaki spikerin ne söylediğini dinleyip anlamıyor (şu an sadece
