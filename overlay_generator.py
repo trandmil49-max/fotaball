@@ -4,18 +4,24 @@ overlay_generator.py
 Bu dosyanın görevi: ocr_reader'ın bulduğu gol anlarını alıp,
 yeşil ekranlı, logolu, skorlu bir video üretmek.
 
+Önceki versiyon "moviepy" adlı bir kütüphane kullanıyordu, ama Railway'in
+sınırlı hafızasında bazen çöküyordu ("Broken pipe" hatası). Bu yüzden
+artık videoyu doğrudan ve daha hafif bir şekilde ffmpeg programına
+kendimiz komut vererek oluşturuyoruz - bu hem daha az hafıza kullanıyor
+hem de çok daha az hata veriyor.
+
 Mantık:
 - Maç boyunca skor birkaç kez değişir (gol anları).
 - Her skor değişiminden bir sonraki değişime kadar olan süre için
   SABİT bir görsel kullanırız (skor sürekli aynı kaldığı için).
-- Bu sabit görselleri arka arkaya ekleyip, orijinal video ile
-  AYNI SÜREDE biten tek bir video oluştururuz.
+- Bu sabit görselleri, süreleriyle birlikte ffmpeg'e veriyoruz, o da
+  bunları birleştirip tek bir video haline getiriyor.
 """
 
 import os
+import subprocess
 import logging
 from PIL import Image, ImageDraw, ImageFont
-from moviepy import ImageClip, concatenate_videoclips
 
 from config import (
     CHROMA_GREEN,
@@ -27,16 +33,17 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-LOGO_SIZE = 220
-BOX_TOP = 90
+LOGO_SIZE = 230
+# Logoların merkezden ne kadar uzakta duracağı (referans görseldeki gibi yakın)
+LOGO_GAP_FROM_CENTER = 195
+CENTER_Y = 260  # Logoların ve skorun dikey olarak hizalanacağı ORTAK çizgi
 
 _font_warning_shown = False
 
 
 def _load_font(size: int):
-    """Font dosyasını yükler. Bir sebeple bulunamazsa (örnek: GitHub'a
-    yüklerken fonts klasörü eksik kalmışsa) bot çökmesin diye
-    Pillow'un kendi standart fontuna geri döner ve bunu net şekilde loglar."""
+    """Font dosyasını yükler. Bir sebeple bulunamazsa bot çökmesin diye
+    Pillow'un kendi standart fontuna geri döner."""
     global _font_warning_shown
     try:
         return ImageFont.truetype(FONT_PATH, size)
@@ -44,63 +51,89 @@ def _load_font(size: int):
         if not _font_warning_shown:
             logger.error(
                 "UYARI: Font dosyası bulunamadı (%s). GitHub reposunda "
-                "'fonts/BebasNeue-Regular.ttf' dosyasının gerçekten var "
-                "olduğunu kontrol et. Şimdilik yedek/standart font kullanılıyor.",
+                "'fonts' klasörünün gerçekten yüklendiğini kontrol et. "
+                "Şimdilik yedek/standart font kullanılıyor.",
                 FONT_PATH,
             )
             _font_warning_shown = True
         return ImageFont.load_default(size=size)
 
 
-def _make_frame_image(logo1: Image.Image, logo2: Image.Image, score, stage_label):
-    """Tek bir skor durumunu gösteren yeşil ekranlı görseli oluşturur."""
-    img = Image.new("RGB", (OUTPUT_WIDTH, OUTPUT_HEIGHT), CHROMA_GREEN)
-    draw = ImageDraw.Draw(img)
-
-    center_x = OUTPUT_WIDTH // 2
-
-    # Varsa üstte küçük "FINAL" / "SEMIFINAL" yazısı
-    y = BOX_TOP
-    if stage_label:
-        stage_font = _load_font(46)
-        bbox = draw.textbbox((0, 0), stage_label, font=stage_font)
-        w = bbox[2] - bbox[0]
-        draw.text((center_x - w / 2, y), stage_label, font=stage_font, fill="white")
-        y += 70
-
-    logo_y = y + 20
-
-    # Sol logo
-    img.paste(logo1, (center_x - LOGO_SIZE - 140, logo_y), logo1)
-    # Sağ logo
-    img.paste(logo2, (center_x + 140, logo_y), logo2)
-
-    # Ortadaki skor kutusu
-    score_text = f"{score[0]} - {score[1]}"
-    score_font = _load_font(110)
-    bbox = draw.textbbox((0, 0), score_text, font=score_font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    score_y = logo_y + (LOGO_SIZE / 2) - (h / 2) - 10
-    draw.text((center_x - w / 2, score_y), score_text, font=score_font, fill="white")
-
+def _remove_white_background(img: Image.Image, threshold: int = 235) -> Image.Image:
+    """Logonun arkasındaki beyaz zemini şeffaf yapar, böylece yeşil ekranda
+    logonun etrafında beyaz kutu görünmez."""
+    img = img.convert("RGBA")
+    pixels = img.load()
+    width, height = img.size
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if r > threshold and g > threshold and b > threshold:
+                pixels[x, y] = (r, g, b, 0)
     return img
 
 
 def _prepare_logo(path: str) -> Image.Image:
     logo = Image.open(path).convert("RGBA")
     logo.thumbnail((LOGO_SIZE, LOGO_SIZE))
-    # Ortalamak için kare bir tuval üzerine yerleştir
+    logo = _remove_white_background(logo)
+    # Ortalamak için kare bir tuval üzerine yerleştir - böylece her logo
+    # aynı boyuttaki kutunun TAM ORTASINDA durur (biri büyük biri küçük
+    # görünmesin, hepsi aynı çizgide dursun diye).
     square = Image.new("RGBA", (LOGO_SIZE, LOGO_SIZE), (0, 0, 0, 0))
     offset = ((LOGO_SIZE - logo.width) // 2, (LOGO_SIZE - logo.height) // 2)
     square.paste(logo, offset, logo)
     return square
 
 
+def _make_frame_image(logo1: Image.Image, logo2: Image.Image, score, stage_label):
+    """Tek bir skor durumunu gösteren yeşil ekranlı görseli oluşturur.
+    Her şey (logolar, skor/VS yazısı) CENTER_Y çizgisine göre tam ortalanır,
+    böylece biri yukarıda biri aşağıda gibi kaymaz."""
+    img = Image.new("RGB", (OUTPUT_WIDTH, OUTPUT_HEIGHT), CHROMA_GREEN)
+    draw = ImageDraw.Draw(img)
+
+    center_x = OUTPUT_WIDTH // 2
+
+    # Varsa üstte küçük "FINAL" / "SEMIFINAL" yazısı
+    if stage_label:
+        stage_font = _load_font(46)
+        draw.text(
+            (center_x, CENTER_Y - LOGO_SIZE // 2 - 55),
+            stage_label,
+            font=stage_font,
+            fill="white",
+            anchor="mm",
+        )
+
+    # Sol logo - dikey olarak CENTER_Y çizgisine göre ortalanmış
+    logo1_y = CENTER_Y - LOGO_SIZE // 2
+    img.paste(logo1, (center_x - LOGO_GAP_FROM_CENTER - LOGO_SIZE, logo1_y), logo1)
+
+    # Sağ logo - aynı çizgide
+    img.paste(logo2, (center_x + LOGO_GAP_FROM_CENTER, logo1_y), logo2)
+
+    # Ortadaki yazı: maç başlamadan (0-0) "VS", gol olduktan sonra gerçek skor
+    if score == (0, 0):
+        center_text = "VS"
+        center_font = _load_font(95)
+    else:
+        center_text = f"{score[0]} - {score[1]}"
+        center_font = _load_font(105)
+
+    # anchor="mm" (middle-middle): yazının TAM ORTASI, verdiğimiz noktaya
+    # denk gelir - böylece logolarla aynı yatay çizgide durur.
+    draw.text((center_x, CENTER_Y), center_text, font=center_font, fill="white", anchor="mm")
+
+    return img
+
+
 def build_overlay_video(logo1_path: str, logo2_path: str, analysis: dict, output_path: str):
     """
     analysis: ocr_reader.analyze_video() çıktısı
     Sonuç olarak output_path'e bir .mp4 dosyası yazar.
+    Hata olursa RuntimeError fırlatır, çağıran taraf (bot.py) bunu
+    yakalayıp kullanıcıya haber verir.
     """
     logo1 = _prepare_logo(logo1_path)
     logo2 = _prepare_logo(logo2_path)
@@ -109,32 +142,52 @@ def build_overlay_video(logo1_path: str, logo2_path: str, analysis: dict, output
     duration = analysis["duration"] or (events[-1][0] + 5)
     stage_label = analysis["stage_label"]
 
-    clips = []
-    for i, (start_time, score) in enumerate(events):
-        end_time = events[i + 1][0] if i + 1 < len(events) else duration
-        segment_duration = max(end_time - start_time, 0.1)
+    concat_list_path = os.path.join(TEMP_DIR, os.path.basename(output_path) + "_list.txt")
+    frame_paths = []
 
-        frame_img = _make_frame_image(logo1, logo2, score, stage_label)
-        frame_path = os.path.join(TEMP_DIR, f"segment_{i}.png")
-        frame_img.save(frame_path)
+    with open(concat_list_path, "w") as list_file:
+        for i, (start_time, score) in enumerate(events):
+            end_time = events[i + 1][0] if i + 1 < len(events) else duration
+            segment_duration = max(end_time - start_time, 0.1)
 
-        clip = ImageClip(frame_path).with_duration(segment_duration)
-        clips.append(clip)
+            frame_img = _make_frame_image(logo1, logo2, score, stage_label)
+            frame_path = os.path.join(TEMP_DIR, f"{os.path.basename(output_path)}_seg{i}.png")
+            frame_img.save(frame_path)
+            frame_paths.append(frame_path)
 
-    final_clip = concatenate_videoclips(clips, method="compose")
-    final_clip.write_videofile(
+            list_file.write(f"file '{frame_path}'\n")
+            list_file.write(f"duration {segment_duration}\n")
+
+        # ffmpeg'in "concat" kuralı gereği: son dosya süresi olmadan bir
+        # kere daha tekrar yazılmalı, yoksa ffmpeg son sahneyi görmezden gelir.
+        if frame_paths:
+            list_file.write(f"file '{frame_paths[-1]}'\n")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", concat_list_path,
+        "-vf", "fps=25,format=yuv420p",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", "25",
         output_path,
-        fps=25,
-        codec="libx264",
-        audio=False,
-        preset="medium",
-        logger=None,
-    )
+    ]
 
-    # Geçici kare dosyalarını temizle
-    for i in range(len(events)):
-        frame_path = os.path.join(TEMP_DIR, f"segment_{i}.png")
-        if os.path.exists(frame_path):
-            os.remove(frame_path)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Geçici dosyaları temizle
+    for p in frame_paths:
+        if os.path.exists(p):
+            os.remove(p)
+    if os.path.exists(concat_list_path):
+        os.remove(concat_list_path)
+
+    if result.returncode != 0 or not os.path.exists(output_path):
+        # ffmpeg'in verdiği son birkaç satır hatayı loglara yazıyoruz ki
+        # sorun çıkarsa Railway loglarından tam olarak ne olduğunu görelim.
+        error_tail = "\n".join(result.stderr.strip().splitlines()[-15:])
+        logger.error("FFmpeg videoyu oluşturamadı:\n%s", error_tail)
+        raise RuntimeError("Video oluşturulamadı (ffmpeg hatası). Detaylar Railway loglarında.")
 
     return output_path

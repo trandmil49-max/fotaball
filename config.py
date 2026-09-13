@@ -34,7 +34,7 @@ CHROMA_GREEN = (0, 177, 64)
 OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 
-FONT_PATH = os.path.join(os.path.dirname(__file__), "fonts", "BebasNeue-Regular.ttf")
+FONT_PATH = os.path.join(os.path.dirname(__file__), "fonts", "Anton-Regular.ttf")
 
 # Geçici dosyaların tutulacağı klasör
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "tmp")

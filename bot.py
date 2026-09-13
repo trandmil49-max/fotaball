@@ -54,6 +54,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def receive_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Bu fonksiyon hem /start sonrası hem de direkt link atıldığında
+    # çalışabiliyor, o yüzden her ihtimalde eski verileri temizleyelim.
+    context.user_data.clear()
+
     url = (update.message.text or "").strip()
     if not url.startswith("http"):
         await update.message.reply_text("Bu bir link gibi görünmüyor. Lütfen geçerli bir video linki gönder.")
@@ -215,7 +219,12 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            # Kullanıcı /start yazmadan direkt bir link gönderirse de
+            # bot otomatik olarak başlasın diye ikinci bir giriş noktası.
+            MessageHandler(filters.Regex(r"^https?://\S+") & filters.TEXT, receive_link),
+        ],
         states={
             WAITING_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_link)],
             WAITING_VIDEO_FALLBACK: [

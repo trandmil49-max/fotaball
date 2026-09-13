@@ -2,6 +2,5 @@ python-telegram-bot==21.6
 opencv-python-headless==4.10.0.84
 pytesseract==0.3.13
 Pillow==10.4.0
-moviepy==2.2.1
 yt-dlp>=2024.10.0
 numpy==1.26.4
