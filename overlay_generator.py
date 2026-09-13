@@ -135,8 +135,11 @@ def build_overlay_video(logo1_path: str, logo2_path: str, analysis: dict, output
     Hata olursa RuntimeError fırlatır, çağıran taraf (bot.py) bunu
     yakalayıp kullanıcıya haber verir.
     """
-    logo1 = _prepare_logo(logo1_path)
-    logo2 = _prepare_logo(logo2_path)
+    try:
+        logo1 = _prepare_logo(logo1_path)
+        logo2 = _prepare_logo(logo2_path)
+    except Exception as e:
+        raise RuntimeError(f"Logo dosyası işlenemedi (bozuk/eksik indirilmiş olabilir): {e}")
 
     events = analysis["events"]
     duration = analysis["duration"] or (events[-1][0] + 5)
@@ -184,10 +187,11 @@ def build_overlay_video(logo1_path: str, logo2_path: str, analysis: dict, output
         os.remove(concat_list_path)
 
     if result.returncode != 0 or not os.path.exists(output_path):
-        # ffmpeg'in verdiği son birkaç satır hatayı loglara yazıyoruz ki
-        # sorun çıkarsa Railway loglarından tam olarak ne olduğunu görelim.
-        error_tail = "\n".join(result.stderr.strip().splitlines()[-15:])
+        # ffmpeg'in verdiği son birkaç satır hatayı hem loglara hem de
+        # kullanıcıya gösterilecek mesaja koyuyoruz - böylece Railway
+        # loglarına bakmaya gerek kalmadan gerçek sebep görülebilir.
+        error_tail = "\n".join(result.stderr.strip().splitlines()[-8:])
         logger.error("FFmpeg videoyu oluşturamadı:\n%s", error_tail)
-        raise RuntimeError("Video oluşturulamadı (ffmpeg hatası). Detaylar Railway loglarında.")
+        raise RuntimeError(f"ffmpeg hatası: {error_tail[:600]}")
 
     return output_path
