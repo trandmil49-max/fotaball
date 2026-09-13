@@ -15,10 +15,14 @@ Nasıl çalışır (basitçe):
 """
 
 import re
+import logging
 import cv2
 import pytesseract
 
 from config import TOP_CROP_RATIO, SAMPLE_FPS, CONFIRM_COUNT
+
+logger = logging.getLogger(__name__)
+_tesseract_warning_shown = False
 
 # "0-2", "1 - 0", "12:3" gibi skor kalıplarını yakalayan basit bir kural
 SCORE_PATTERN = re.compile(r"(\d{1,2})\s*[-:]\s*(\d{1,2})")
@@ -33,6 +37,7 @@ STAGE_KEYWORDS = {
 
 def _read_text_from_frame(frame, crop_ratio: float) -> str:
     """Bir video karesinin üst kısmını kırpıp OCR ile okur."""
+    global _tesseract_warning_shown
     height, width = frame.shape[:2]
     crop_height = int(height * crop_ratio)
     top_region = frame[0:crop_height, 0:width]
@@ -43,7 +48,16 @@ def _read_text_from_frame(frame, crop_ratio: float) -> str:
 
     try:
         text = pytesseract.image_to_string(thresh, config="--psm 6")
-    except Exception:
+    except Exception as e:
+        if not _tesseract_warning_shown:
+            logger.error(
+                "UYARI: tesseract programı çalışmadı (%s). Bu genelde "
+                "tesseract-ocr'un sunucuya kurulmadığı anlamına gelir - "
+                "Dockerfile'ın doğru yüklendiğini kontrol et. Skor okuma "
+                "şu anlık çalışmayacak.",
+                e,
+            )
+            _tesseract_warning_shown = True
         text = ""
     return text
 

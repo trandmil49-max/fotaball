@@ -193,6 +193,16 @@ async def process_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(path)
 
 
+async def fallback_unrecognized(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bot, beklemediği bir şey aldığında (yanlış tür dosya, rastgele
+    mesaj vb.) artık ASLA sessiz kalmıyor - en azından ne beklediğini
+    söylüyor."""
+    await update.message.reply_text(
+        "Bunu anlayamadım. Yeni bir video linki gönderirsen otomatik olarak "
+        "baştan başlarım, ya da şu an istenen dosyayı gönder."
+    )
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("İşlem iptal edildi. Baştan başlamak için /start yaz.")
     return ConversationHandler.END
@@ -220,22 +230,38 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # Kullanıcı hangi adımda olursa olsun bir link gönderirse, bot
+    # otomatik olarak o linkle YENİDEN BAŞLASIN istiyoruz - bu yüzden
+    # bu handler'ı her state'e ekliyoruz, sadece WAITING_LINK'e değil.
+    link_handler = MessageHandler(filters.Regex(r"^https?://\S+") & filters.TEXT, receive_link)
+
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            # Kullanıcı /start yazmadan direkt bir link gönderirse de
-            # bot otomatik olarak başlasın diye ikinci bir giriş noktası.
-            MessageHandler(filters.Regex(r"^https?://\S+") & filters.TEXT, receive_link),
+            link_handler,
         ],
         states={
-            WAITING_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_link)],
+            WAITING_LINK: [link_handler],
             WAITING_VIDEO_FALLBACK: [
-                MessageHandler(filters.VIDEO | filters.Document.VIDEO, receive_video_fallback)
+                MessageHandler(filters.VIDEO | filters.Document.VIDEO, receive_video_fallback),
+                link_handler,
             ],
-            WAITING_LOGO1: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_logo1)],
-            WAITING_LOGO2: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_logo2)],
+            WAITING_LOGO1: [
+                MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_logo1),
+                link_handler,
+            ],
+            WAITING_LOGO2: [
+                MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_logo2),
+                link_handler,
+            ],
         },
-        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start),
+            # En son çare: hiçbir handler eşleşmediyse SESSİZ KALMA,
+            # en azından ne olduğunu söyle.
+            MessageHandler(filters.ALL, fallback_unrecognized),
+        ],
     )
 
     app.add_handler(conv_handler)
