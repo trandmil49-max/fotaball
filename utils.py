@@ -1,11 +1,13 @@
 """
 utils.py
 --------
-Kullanıcının verdiği YouTube linkinden video başlığını ve açıklamasını
-çeker. Bu bilgi, "final mi yarı final mi" gibi ek bir doğrulama için
-kullanılır (skor kutusundan bulunamazsa yedek kaynak olur).
-Link verilmezse ya da bilgi çekilemezse sorun değil, bot skor kutusu
-okumasıyla devam eder.
+Kullanıcının verdiği YouTube linkinden video başlığını/açıklamasını
+ve videonun kendisini indirmeye yarayan yardımcı fonksiyonlar.
+
+Videoyu Telegram üzerinden değil, doğrudan linkten indiriyoruz çünkü
+Telegram'ın kendi kuralı: bir bot, Telegram'a yüklenen dosyaları
+sadece 20 MB'a kadar indirebiliyor. Link üzerinden indirince bu
+sınıra hiç takılmıyoruz.
 """
 
 import yt_dlp
@@ -24,3 +26,22 @@ def fetch_video_metadata(url: str) -> str:
         return f"{title}\n{description}"
     except Exception:
         return ""
+
+
+def download_video(url: str, output_path: str) -> str:
+    """
+    Verilen linkten videoyu indirip output_path'e kaydeder.
+    Başarılı olursa dosya yolunu, olmazsa hatayı fırlatır (raise eder) -
+    çağıran taraf bunu yakalayıp kullanıcıya haber verir.
+    """
+    options = {
+        "quiet": True,
+        "noplaylist": True,
+        "format": "best[height<=720][ext=mp4]/best[height<=720]/best",
+        "outtmpl": output_path,
+        "merge_output_format": "mp4",
+    }
+    with yt_dlp.YoutubeDL(options) as ydl:
+        ydl.download([url])
+    return output_path
+

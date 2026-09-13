@@ -29,9 +29,20 @@ skorun gol oldukça güncellendiği bir video üretir. Bunu kendi videonun
 
 ### 4. Botu test et
 - Telegram'da botunu bul, `/start` yaz.
-- Sırasıyla: maç videosu, video linki (yoksa "geç" yaz), birinci takım
-  logosu, ikinci takım logosu gönder.
-- Bot sana birkaç dakika içinde yeşil ekranlı skor videosunu gönderecek.
+- Sırasıyla: video linki, (bot linkten indiremezse videoyu doğrudan
+  yüklemeni ister), birinci takım logosu, ikinci takım logosu gönder.
+- Bot "video hazırlanıyor, bekleyin" diyecek, birkaç dakika içinde
+  yeşil ekranlı skor videosunu gönderecek.
+
+## Önemli: neden önce link isteniyor?
+
+Telegram'ın kendi kuralı gereği bir bot, Telegram'a yüklenen dosyaları
+**sadece 20 MB'a kadar** indirebiliyor. Maç videoları çoğu zaman bundan
+büyük olduğu için, bot videoyu Telegram üzerinden değil, **doğrudan
+linkten (YouTube'dan)** indiriyor - bu sınıra hiç takılmıyor. Link bir
+sebeple çalışmazsa (özel video vb.), bot sana videoyu direkt yüklemeni
+ister; o durumda video 20 MB'dan küçük olmalı.
+
 
 ## Bir şey yanlış giderse
 
