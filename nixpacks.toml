@@ -1,0 +1,6 @@
+# Railway bu dosyayı okuyup, botun ihtiyaç duyduğu ekstra programları
+# (yazı okuma ve video işleme araçları) otomatik olarak kuruyor.
+# Bu dosyaya dokunmana gerek yok.
+
+[phases.setup]
+aptPkgs = ["tesseract-ocr", "ffmpeg", "libgl1"]
